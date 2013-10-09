@@ -218,6 +218,18 @@ namespace monitoring
                 continue;
             }
 
+            chart_sum_up(chart, robot);
+
+            // fprintf(stdout, "robot fd = %d, ", conn->fd);
+            if(robot->error_no)
+            {
+                int err_time_diff = robot->error_occur_time - robot->start_conn_time;
+                fprintf(stdout, "robot[idx=%d,fd=%d] failed after launched <%f> s, errormsg: <%d>%s\n", 
+                    robot->idx, robot->sockfd, ms_to_s(err_time_diff), robot->error_no, strerror(robot->error_no));
+
+                continue;
+            }
+
             if(robot->conn_succ_time)
             {
                 ++n_conn_succ;
@@ -234,7 +246,7 @@ namespace monitoring
 
                     total_succ_robot_life += robot_life;
                     total_send_recv_time += send_recv_time;
-                    
+
                     min_send_recv_time = min(send_recv_time, min_send_recv_time);
                     max_send_recv_time = max(send_recv_time, max_send_recv_time);
 
@@ -244,16 +256,6 @@ namespace monitoring
 
                 min_conn_time = min(conn_time, min_conn_time);
                 max_conn_time = max(conn_time, max_conn_time);
-            }
-            
-            chart_sum_up(chart, robot);
-
-            // fprintf(stdout, "robot fd = %d, ", conn->fd);
-            if(robot->error_no)
-            {
-                int err_time_diff = robot->error_occur_time - robot->start_conn_time;
-                fprintf(stdout, "robot[idx=%d,fd=%d] failed after launched <%f> s, errormsg: <%d>%s\n", 
-                    robot->idx, robot->sockfd, ms_to_s(err_time_diff), robot->error_no, strerror(robot->error_no));
             }
         }
 
@@ -383,7 +385,7 @@ int robot_connect(svr_t *svr)
     int connect_result = connect(robot_socket, (struct sockaddr*)&svr_addr, sizeof(svr_addr));  
     if(connect_result < 0)
     {
-        oops("connect error...");
+        // oops("connect error...");
         return -1;
     }
 
@@ -420,7 +422,7 @@ bool robot_send(robot_t *robot, const char buf[], int n)
     ssize_t write_length = send(robot->sockfd, buf, n, 0);
     if(write_length < n)
     {
-        oops("error: write ...");
+        // oops("error: write ...");
         // close(client_socket);
 
         return false;
@@ -438,7 +440,7 @@ bool robot_recv(robot_t *robot, char buf[], int buf_len, ssize_t &n_recv)
     n_recv = recv(robot->sockfd, buf, buf_len, MSG_WAITALL);  
     if(n_recv == -1)
     {
-        fprintf(stdout, "robot<idx=%d, fd=%d> recv msg fail! error code is <%d>, error msg is <'%s'>\n", robot->idx, robot->sockfd, errno, strerror(errno));
+        // fprintf(stdout, "robot<idx=%d, fd=%d> recv msg fail! error code is <%d>, error msg is <'%s'>\n", robot->idx, robot->sockfd, errno, strerror(errno));
 
         // oops("error: read data from socket...");
         return false;
@@ -474,8 +476,9 @@ void robot_start(robot_t *robot, svr_t *svr)
     int robot_socket = robot_connect(svr);
     if(robot_socket < 0)
     {
-        fprintf(stderr, "robot<idx=%d> could not connect to server<%s:%d>\n", robot->idx, svr->addr, svr->port);
         robot_err_cache(robot);
+
+        fprintf(stderr, "robot<idx=%d> connect server<%s:%d> fail! <error=%d>'%s'\n", robot->idx, svr->addr, svr->port, errno, strerror(errno));
         return;
     }
 
@@ -491,6 +494,8 @@ void robot_start(robot_t *robot, svr_t *svr)
     if(false == succ)
     {
         robot_err_cache(robot);
+
+        fprintf(stderr, "robot<idx=%d, fd=%d> send data to server<%s:%d> fail! <error=%d>'%s'\n", robot->idx, robot->sockfd, svr->addr, svr->port, errno, strerror(errno));
         return;
     }
 
@@ -501,6 +506,8 @@ void robot_start(robot_t *robot, svr_t *svr)
     if(false == succ)
     {
         robot_err_cache(robot);
+
+        fprintf(stdout, "robot<idx=%d, fd=%d> recv msg from svr<%s:%d> fail! <error=%d>'%s'\n", robot->idx, robot->sockfd, svr->addr, svr->port, errno, strerror(errno));
         return;
     }
 
