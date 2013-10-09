@@ -1,6 +1,6 @@
-project(robot)
+project(crossdmd)
 
-SET(CMAKE_BUILD_TYPE "Debug") 
+#SET(CMAKE_BUILD_TYPE "Debug") 
 
 set_property(GLOBAL PROPERTY USE_FOLDERS On)
 cmake_minimum_required(VERSION 2.8)
@@ -29,9 +29,8 @@ if (WIN32)
 
   if(${PLATFORM} STREQUAL "X64")
     add_definitions("-D_WIN64")
-
-	#Enable extended object support for debug compiles on X64 (not required on X86)
-	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /bigobj")
+    #Enable extended object support for debug compiles on X64 (not required on X86)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /bigobj")
   endif()
 elseif(APPLE)
   MESSAGE("APPLE")
@@ -43,20 +42,21 @@ SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/libs/)
 
 include_directories(
-	    ${CMAKE_CURRENT_SOURCE_DIR}
-		  ${CMAKE_SOURCE_DIR}/robot
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}/robot
 )
 
 LINK_DIRECTORIES(
-	${CMAKE_BINARY_DIR}/libs/lib
+  ${CMAKE_BINARY_DIR}/libs/lib
 )
 
 SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
 SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
 
-file(GLOB sources_localdir *.cpp *.h *.c)
-add_executable(epollrecv ${sources_localdir})
+######################################################################
+#file(GLOB sources_localdir *.cpp *.h *.c)
+add_executable(crossdmd crossdmd_main.cpp)
 
-file(GLOB robot_dir robot/main.cpp robot/*.h robot/*.c)
-add_executable(robot ${robot_dir})
-target_link_libraries(robot pthread)
+#file(GLOB robot_dir robot/main.cpp robot/*.h robot/*.c)
+add_executable(crossdmd_robot robot_main.cpp)
+target_link_libraries(crossdmd_robot pthread)
