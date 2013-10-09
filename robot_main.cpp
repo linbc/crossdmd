@@ -1,3 +1,10 @@
+///<-----------------------------------------------------------
+//# 
+//#  @description: 安全沙箱测试机器人
+//#  @create date: 2013-10-9 
+//# 
+//<------------------------------------------------------------/
+
 #include <assert.h>
 #include <iostream>
 #include <sys/types.h>
@@ -15,7 +22,6 @@
 
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <unistd.h>
 
 #include <errno.h>
 
@@ -50,15 +56,27 @@ void setnonblocking(int sock)
     }
 }
 
+struct svr_t
+{
+    char *addr; // 服务器ip或者url:192.168.0.1或www.xxx.com
+    int port; // 服务器端口列表
+
+    unsigned long cast_addr;
+};
+
 namespace g_xxx
 {
-    int g_n_robot = 1;
-    char *g_svr_addr = NULL;
-    int g_port = 0;
+#define MAX_SVR_NUM 10
+
+    int g_n_robot = 1; // 机器人数量
+    
+    svr_t *g_svrs = NULL;
+    int g_n_svr = 0;
 }
 
-typedef int64_t time_in_ms;
+typedef int64_t time_in_ms; // 毫秒
 
+// 机器人状态入口
 struct robot_t
 {
     pthread_t t_id; // 所属线程id
@@ -69,23 +87,24 @@ struct robot_t
     bool closed; // 是否已关闭
     int error_no; // 错误号
 
-    time_in_ms start_conn_time;
-    time_in_ms conn_succ_time;
-    time_in_ms finish_time;
+    time_in_ms start_conn_time; // 开始connect的时间
+    time_in_ms conn_succ_time; // connect成功的事件，如不成功则为0
+    time_in_ms finish_time; // robot一次任务成功执行后的事件
 
-    time_in_ms error_occur_time;
+    time_in_ms error_occur_time; // 发生错误的时间
 };
 
 namespace monitoring
 {
     #define  MS_PER_SECOND 1000
 
+    // 机器人测试状况监视
     struct robot_monitor
     {
-        int64_t start_ms;
-        int64_t end_ms;
+        time_in_ms start_ms; // 本次机器人测试开始时间
+        time_in_ms end_ms; // 所有机器人终止时的时间
 
-        int n_robot;
+        int n_robot; // 机器人数量
     };
 
     struct robot_chart
@@ -100,7 +119,8 @@ namespace monitoring
         error_map_t error_map;
     };
 
-    int64_t now()
+    // 获取时间（「新纪元时间」Epoch，1970年1月1日凌晨零点零分零秒距今的毫秒数）
+    time_in_ms now()
     {
         struct timeval time;
         gettimeofday(&time, NULL);
@@ -171,18 +191,18 @@ namespace monitoring
         int total_send_recv_time = 0;
         int total_succ_robot_life = 0;
 
-        int n_conn_succ = 0;
-        int n_safebox_succ = 0;
+        int n_conn_succ = 0; // 连接成功的机器人数量
+        int n_safebox_succ = 0; // 执行任务成功的机器人数量
         
 #define MS_PER_MINUTE 60000
 
-        int min_conn_time = MS_PER_MINUTE;
+        int min_conn_time = MS_PER_MINUTE; // 连接速度最快的机器人花了多长时间连接
         int max_conn_time = 0;
 
-        int min_send_recv_time = MS_PER_MINUTE;
+        int min_send_recv_time = MS_PER_MINUTE; // 发送和接收数据的最快时间
         int max_send_recv_time = 0;
 
-        int min_robot_life = MS_PER_MINUTE;
+        int min_robot_life = MS_PER_MINUTE; // 最快完成任务的机器人花了多少时间
         int max_robot_life = 0;
 
         for(int i = 0; i < n_robot; i++)
@@ -200,15 +220,15 @@ namespace monitoring
             {
                 ++n_conn_succ;
 
-                int conn_time = robot->conn_succ_time - robot->start_conn_time;
+                int conn_time = robot->conn_succ_time - robot->start_conn_time; // 连接耗时
                 total_conn_time += conn_time;
 
                 if(robot->finish_time)
                 {
                     ++n_safebox_succ;
 
-                    int robot_life = robot->finish_time - robot->start_conn_time;
-                    int send_recv_time = robot_life - conn_time;
+                    int robot_life = robot->finish_time - robot->start_conn_time; // 机器人生命长度
+                    int send_recv_time = robot_life - conn_time; // 发送接收数据的耗时
 
                     total_succ_robot_life += robot_life;
                     total_send_recv_time += send_recv_time;
@@ -235,14 +255,14 @@ namespace monitoring
             }
         }
 
-        int total_cost_time = (int)(monitor.end_ms - monitor.start_ms);
+        int total_cost_time = (int)(monitor.end_ms - monitor.start_ms); // 本次测试的总耗时
 
-        double avg_conn_ms = (n_conn_succ == 0 ? 0 : (double)total_conn_time / n_conn_succ);
-        double avg_send_recv_ms = ((n_safebox_succ == 0) ? 0 : (double)total_send_recv_time / n_safebox_succ);
-        double avg_robot_life = ((n_safebox_succ == 0) ? 0 : (double)total_succ_robot_life / n_safebox_succ);
+        double avg_conn_ms = (n_conn_succ == 0 ? 0 : (double)total_conn_time / n_conn_succ); // 平均每个机器人花了多少时间进行连接
+        double avg_send_recv_ms = ((n_safebox_succ == 0) ? 0 : (double)total_send_recv_time / n_safebox_succ); // 平均数据传输时间
+        double avg_robot_life = ((n_safebox_succ == 0) ? 0 : (double)total_succ_robot_life / n_safebox_succ); // 机器人的平均生命长度
 
-        double conn_per_sec = ((n_conn_succ == 0) ? 0 : (double)n_conn_succ / ms_to_s(max_conn_time));
-        double robots_per_sec = ((n_safebox_succ == 0) ? 0 :(double)n_safebox_succ / ms_to_s(max_robot_life));
+        double conn_per_sec = ((n_conn_succ == 0) ? 0 : (double)n_conn_succ / ms_to_s(total_cost_time)); // 每秒多少连接
+        double robots_per_sec = ((n_safebox_succ == 0) ? 0 :(double)n_safebox_succ / ms_to_s(total_cost_time)); // 每秒多少机器人
 
         fprintf(stdout, "total launched robot number = %d\n", n_robot);
         print_robot_chart(chart);
@@ -305,7 +325,7 @@ void print_host_ent(hostent *host_ent, const char *host_name)
     case AF_INET6:   
         pptr = host_ent->h_addr_list;   
 
-        /* 将得到的所有地址都打出来。其中调用了inet_ntop()函数 */  
+        /* 将得到的所有地址都打出来 */  
         for(;*pptr!=NULL;pptr++) 
         {
             printf("ip = <%s>\n", inet_ntop(host_ent->h_addrtype, *pptr, str, sizeof(str)));   
@@ -319,6 +339,8 @@ void print_host_ent(hostent *host_ent, const char *host_name)
     }
 }
 
+// 解析服务器地址，支持127.0.0.1的ip格式和www.xxxxxx.com的url格式
+// 失败返回unsigned long(-1)
 unsigned long name_resolve(const char *host_name)  
 {  
     struct in_addr addr;  
@@ -328,24 +350,22 @@ unsigned long name_resolve(const char *host_name)
         struct hostent *host_ent = gethostbyname(host_name);  
         if(host_ent==NULL)
         {
-            fprintf(stdout, "name_resolve fail\n");
+            perror("name_resolve: gethostbyname fail:");
             return(-1);
         }
 
         memcpy((char *)&addr.s_addr, host_ent->h_addr, host_ent->h_length);  
-
         print_host_ent(host_ent, host_name);
     }
 
     return addr.s_addr;
 }
 
-int robot_connect(const char svr_address[], int port)
+// 连接指定服务器，成功返回socket，失败返回-1
+int robot_connect(svr_t *svr)
 {
-    static unsigned long cast_svr_addr = name_resolve(svr_address);
-
-    int client_socket = socket(AF_INET, SOCK_STREAM, 0);  
-    if(client_socket < 0)
+    int robot_socket = socket(AF_INET, SOCK_STREAM, 0);  
+    if(robot_socket < 0)
     {
         oops("socket initiating error...");
         return -1;
@@ -355,10 +375,10 @@ int robot_connect(const char svr_address[], int port)
     memset(&svr_addr, 0, sizeof(sockaddr));
 
     svr_addr.sin_family = AF_INET;
-    svr_addr.sin_addr.s_addr = cast_svr_addr;  
-    svr_addr.sin_port =  htons(port); 
+    svr_addr.sin_addr.s_addr = svr->cast_addr;  
+    svr_addr.sin_port =  htons(svr->port); 
 
-    int connect_result = connect(client_socket, (struct sockaddr*)&svr_addr, sizeof(svr_addr));  
+    int connect_result = connect(robot_socket, (struct sockaddr*)&svr_addr, sizeof(svr_addr));  
     if(connect_result < 0)
     {
         oops("connect error...");
@@ -366,9 +386,10 @@ int robot_connect(const char svr_address[], int port)
     }
 
     // setnonblocking(client_socket);
-    return client_socket;
+    return robot_socket;
 }
 
+// 设置发送超时时间，使得send时能在超过一定时间得不到结果即返回
 void set_socket_send_timeout(int sockfd, long tv_sec, long tv_usec)
 {
     struct timeval timeout;             //超时时间
@@ -378,6 +399,7 @@ void set_socket_send_timeout(int sockfd, long tv_sec, long tv_usec)
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,sizeof(struct timeval)); 
 }
 
+// 设置接收超时时间
 void set_socket_recv_timeout(int sockfd, long tv_sec, long tv_usec)
 {
     struct timeval timeout;             //超时时间
@@ -387,6 +409,8 @@ void set_socket_recv_timeout(int sockfd, long tv_sec, long tv_usec)
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout,sizeof(struct timeval)); 
 }
 
+// 发送数据，一段时间后发送不出即返回结果
+// 成功返回true，失败false
 bool robot_send(robot_t *robot, const char buf[], int n)
 {
     set_socket_send_timeout(robot->sockfd, 5, 0);
@@ -403,6 +427,8 @@ bool robot_send(robot_t *robot, const char buf[], int n)
     return true;
 }
 
+// 接收数据，一段时间内接收不到数据即返回
+// 成功返回true，失败false
 bool robot_recv(robot_t *robot, char buf[], int buf_len, ssize_t &n_recv)
 {
     set_socket_recv_timeout(robot->sockfd, 5, 0);
@@ -431,20 +457,22 @@ void robot_end(robot_t *robot)
     close(robot->sockfd);
 }
 
+// 记载任务失败原因
 void robot_err_cache(robot_t *robot)
 {
     robot->error_no = errno;
     robot->error_occur_time = now();
 }
 
-void robot_start(robot_t *robot, const char svr_addr[], int port)
+// 启动robot
+void robot_start(robot_t *robot, svr_t *svr)
 {
     robot->start_conn_time = now();
 
-    int robot_socket = robot_connect(svr_addr, port);
+    int robot_socket = robot_connect(svr);
     if(robot_socket < 0)
     {
-        fprintf(stderr, "robot<idx=%d> could not connect to server<%s:%d>\n", robot->idx, svr_addr, port);
+        fprintf(stderr, "robot<idx=%d> could not connect to server<%s:%d>\n", robot->idx, svr->addr, svr->port);
         robot_err_cache(robot);
         return;
     }
@@ -452,7 +480,7 @@ void robot_start(robot_t *robot, const char svr_addr[], int port)
     robot->sockfd = robot_socket;
     robot->conn_succ_time = now();
 
-    fprintf(stderr, "robot<idx=%d, fd=%d> connect to server<%s:%d>success\n", robot->idx, robot->sockfd, svr_addr, port);
+    fprintf(stdout, "robot<idx=%d, fd=%d> connect to server<%s:%d>success\n", robot->idx, robot->sockfd, svr->addr, svr->port);
 
     static const char buf[] = "<?xml version=\"1.0\"?>*****************";
     int len = strlen(buf) + 1;
@@ -474,6 +502,7 @@ void robot_start(robot_t *robot, const char svr_addr[], int port)
         return;
     }
 
+    // 安全沙箱策略数据
     static const char* expected_data = 
         "<?xml version=\"1.0\"?>"
         "<!DOCTYPE cross-domain-policy SYSTEM \"http://www.macromedia.com/xml/dtds/cross-domain-policy.dtd\">"
@@ -481,12 +510,13 @@ void robot_start(robot_t *robot, const char svr_addr[], int port)
         "	<allow-access-from domain=\"*\" to-ports=\"*\" />"
         "</cross-domain-policy>";
 
+    // 校验匹配
     ssize_t expected_len = strlen(expected_data) + 1;
     if(strncmp(recv_buf, expected_data, strlen(expected_data)) || n_recv != expected_len)
     {
         fprintf(stderr, "recv data err, unexpected data:%s, expecting len is %zd, recv len is %zd, robot<idx=%d, fd=%d>\n", 
             recv_buf, expected_len, n_recv, robot->idx, robot->sockfd);
-        fprintf(stderr, "              xpecting data is:%s,\n", expected_data);
+        fprintf(stderr, "             expecting data is:%s,\n", expected_data);
     }
 
     // fprintf(stdout, "robot <%d> life is %d ms\n", i, (int)(end_ms - start_ms));
@@ -494,10 +524,13 @@ void robot_start(robot_t *robot, const char svr_addr[], int port)
     robot_end(robot);
 }
 
+// 机器人任务线程的回调函数
 void* robot_thread_cb(void *un_used)
 {
     struct robot_t *robot = (robot_t*)un_used;
-	robot_start(robot, g_svr_addr, g_port);
+
+    svr_t &svr = g_svrs[robot->idx % g_n_svr];
+	robot_start(robot, &svr);
 
 	return NULL;
 }
@@ -511,21 +544,26 @@ void new_thread_robot(robot_t *robot)
 	// pthread_join(tid, NULL);
 }
 
+// 启动机器人
 void robots_power_on()
 {
     robot_monitor monitor;
     monitor_start(monitor);
 
+    // 所有机器人执行任务的状况：开始时间、结束时间、失败原因等，对应存在这个数组里面
     struct robot_t *robots = new robot_t[g_n_robot];
+
+    // 根据机器人数量，为每个机器人开启一个线程让其执行任务    
     for(int i = 0; i < g_n_robot; i++)
     {
         robot_t *robot = &robots[i];
         memset(robot, 0, sizeof(robot_t));
 
         robot->idx = i;
-        new_thread_robot(robot);
+        new_thread_robot(robot); 
     }
 
+    // 主线程等待所有机器人线程执行完毕
     for(int i = 0; i < g_n_robot; i++)
     {
         robot_t *robot = &robots[i];
@@ -536,40 +574,80 @@ void robots_power_on()
     monitor_print(monitor, robots, g_n_robot);
 }
 
-int main(int argc, char **argv)
+bool parse_arg(int argc, char **argv)
 {
-    if (argc != 4)
+    if (argc < 4 || (argc % 2))
     {
-        fprintf(stderr, "your command is invalid, check if it is:[robot server_url port robot_num]\n");
+        // 格式为：robot 连接数量 服务器1地址 服务器1端口 服务器2地址 服务器2端口 .....
+        fprintf(stderr, "your command is invalid, check if it is:<<< robot robot_num server_url1 port1 [server_url2 port2] ...[server_url10 port10] >>>\n");
 
-        fprintf(stderr, "for example: robot s0.9.game2.com.cn 843 10000\n");
-        fprintf(stderr, "for example: robot 127.0.0.1 10023 999\n");
+        fprintf(stderr, "for example: robot 10000 s0.9.game2.com.cn 843 s0.9.game2.com.cn 844\n");
+        fprintf(stderr, "for example: robot 999 127.0.0.1 10023 127.0.0.1 10024\n");
 
-        return 1;
+        return false;
     }
 
-    g_svr_addr = argv[1];
-    if((unsigned long)-1 == name_resolve(g_svr_addr))
-    {
-        fprintf(stderr, "url:<%s> is invalid\a\n",argv[1]);
-        return 1;
-    }
-    if((g_port = atoi(argv[2])) < 0 )
-    {
-        fprintf(stderr, "url:<%s> is invalid\a\n",argv[2]);
-        return 1;
-    }
-    if( (g_n_robot = atoi(argv[3])) < 0 )
+    if( (g_n_robot = atoi(argv[1])) < 0 )
     {
         fprintf(stderr, "robot number:<%s> is invalid\a\n",argv[3]);
+        return false;
+    }
+
+    g_n_svr = 0;
+
+    int svr_num_by_argc = (argc - 1) / 2;
+    g_svrs = new svr_t[svr_num_by_argc];
+
+    char *svr_addr = NULL;
+    int port = 0;
+    unsigned long cast_addr = 0;
+
+    for(int i = 2; i < argc; i+=2)
+    {
+        svr_addr = argv[i];
+
+        cast_addr = name_resolve(svr_addr);
+        if((unsigned long)-1 == cast_addr)
+        {
+            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid address", i, svr_addr);
+            continue;
+        }
+
+        port = atoi(argv[i + 1]);
+        if(port < 0 )
+        {
+            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid port", i, argv[i + 1]);
+            continue;
+        }
+
+        svr_t &svr = g_svrs[g_n_svr++];
+        svr.addr = svr_addr;
+        svr.port = port;
+        svr.cast_addr = cast_addr;
+    }
+
+    if(g_n_svr == 0)
+    {
+        fprintf(stderr, "error: can't find a valid server");
+        return false;
+    }
+
+    // fprintf(stdout, "\n");
+
+    return true;
+}
+
+// 机器人
+int main(int argc, char **argv)
+{
+    if(false == parse_arg(argc, argv))
+    {
         return 1;
     }
 
     fprintf(stdout, "plan to launch <%d> robot\n", g_n_robot);
-
-	robots_power_on();
-
-	fprintf(stdout, "main is ending, robot num is %d\n", g_n_robot);
+    robots_power_on();
+	fprintf(stdout, "mission accomplished, the robot num is %d\n", g_n_robot);
 
 	return 0;
 }
