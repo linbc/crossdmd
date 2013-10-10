@@ -354,7 +354,7 @@ unsigned long name_resolve(const char *host_name)
         struct hostent *host_ent = gethostbyname(host_name);  
         if(host_ent==NULL)
         {
-            perror("name_resolve: gethostbyname fail:");
+            fprintf(stderr, "resolve svr addr<%s> fail at gethostbyname!\n", host_name);
             return(-1);
         }
 
@@ -618,15 +618,15 @@ bool parse_arg(int argc, char **argv)
         cast_addr = name_resolve(svr_addr);
         if((unsigned long)-1 == cast_addr)
         {
-            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid address", i, svr_addr);
-            continue;
+            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid address\n", i, svr_addr);
+            return false;
         }
 
         port = atoi(argv[i + 1]);
-        if(port < 0 )
+        if(port <= 0 )
         {
-            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid port", i, argv[i + 1]);
-            continue;
+            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid port\n", i, argv[i + 1]);
+            return false;
         }
 
         svr_t &svr = g_svrs[g_n_svr++];
