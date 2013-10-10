@@ -41,20 +41,31 @@ namespace g_xxx
 
 using namespace g_xxx;
 
-void setnonblocking(int sock)
+namespace log
+{
+#define LOG_TRACE(xxx, args...) {fprintf(stdout, xxx, ##args);}
+#define LOG_ERR(xxx, args...) {fprintf(stderr, xxx, ##args);}
+}
+
+using namespace log;
+
+bool setnonblocking(int sock)
 {
     int opts = fcntl(sock,F_GETFL);
     if(opts < 0)
     {
-        perror("fcntl(sock,GETFL)");
-        return;
+        // perror("fcntl(sock,GETFL)");
+        return false;
     }
 
     opts = opts | O_NONBLOCK;
     if(fcntl(sock,F_SETFL,opts) < 0)
     {
-        perror("fcntl(sock,SETFL,opts)");
+        // perror("fcntl(sock,SETFL,opts)");
+        return false;
     }
+
+    return true;
 }
 
 void set_addr_reused(int socket)
@@ -70,11 +81,11 @@ void handle_send(int sockfd)
     {
         if(errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)
         {
-            // fprintf(stdout, "robot send msg fail! error code is <%d>, error msg is <'%s'>\n", errno, strerror(errno));
+            // LOG_TRACE("robot send msg fail! error code is <%d>, error msg is <'%s'>\n", errno, strerror(errno));
         }
         else
         {// 说明出错，应该关闭连接
-            fprintf(stderr, "send msg fail! error code is <%d>, error msg is <'%s'>\n", errno, strerror(errno));
+            // LOG_ERR("send msg fail! error code is <%d>, error msg is <'%s'>\n", errno, strerror(errno));
             close(sockfd);
         }
 
@@ -83,7 +94,7 @@ void handle_send(int sockfd)
     
     if(n == 0)
     {
-        // fprintf(stdout, "svr side detected the socket<%d> closed\n", sockfd);
+        // LOG_TRACE("svr side detected the socket<%d> closed\n", sockfd);
     }
 
     close(sockfd);
@@ -95,11 +106,11 @@ bool try_send_safebox_data(int sockfd)
     int n_send = send(sockfd, g_safebox_buf, g_safebox_data_len, 0);
     if(n_send < 0)
     {
-        // fprintf(stderr, "try to send msg to robot <fd=%d> not in epoll fail, ! error code is <%d>, error msg is <'%s'>\n", sockfd, errno, strerror(errno));
+        // LOG_ERR("try to send msg to robot <fd=%d> not in epoll fail, ! error code is <%d>, error msg is <'%s'>\n", sockfd, errno, strerror(errno));
         return false;
     }
 
-    // fprintf(stderr, "try to send msg to robot <fd=%d> not in epoll success\n", sockfd);
+    // LOG_ERR("try to send msg to robot <fd=%d> not in epoll success\n", sockfd);
     close(sockfd);
     return true;
 }
@@ -116,11 +127,11 @@ void handle_msg(int sockfd, epoll_event &in_ev, int epfd)
     {
         if(errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)
         {
-            // fprintf(stdout, "robot <fd=%d> eagain recv msg fail! error code is <%d>, error msg is <'%s'>\n", fd, errno, strerror(errno));
+            // LOG_TRACE("robot <fd=%d> eagain recv msg fail! error code is <%d>, error msg is <'%s'>\n", fd, errno, strerror(errno));
         }
         else
         {
-            fprintf(stdout, "sockfd is <%d>, error type is <%d>, error msg is <'%s'>\n", sockfd, errno, strerror(errno));
+            // LOG_TRACE("sockfd is <%d>, error type is <%d>, error msg is <'%s'>\n", sockfd, errno, strerror(errno));
             close(sockfd);
         }
 
@@ -147,7 +158,7 @@ void handle_msg(int sockfd, epoll_event &in_ev, int epfd)
 
         if (epoll_ctl(epfd, EPOLL_CTL_MOD, sockfd, &ev) == -1) 
         {
-            perror("epoll_ctl: mod");
+            // perror("epoll_ctl: mod");
         }
     }
     
@@ -162,14 +173,17 @@ void handle_accept(int listenfd, epoll_event &ev, int epfd)
 
     while((connfd = accept(listenfd, (struct sockaddr*)&clientaddr, &clilen)) > 0)
     {
-        setnonblocking(connfd);
+        if(false == setnonblocking(connfd))
+        {
+            continue;
+        }
 
-        // fprintf(stdout, "accept connection from: <%s:%d>, assigned socket is:<%d>\n", inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port), connfd);
+        // LOG_TRACE("accept connection from: <%s:%d>, assigned socket is:<%d>\n", inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port), connfd);
         ev.data.fd = connfd;
         ev.events = EPOLLIN;// | EPOLLET;
 
         if (epoll_ctl(epfd, EPOLL_CTL_ADD, connfd, &ev) == -1) {
-            perror("epoll_ctl: add");
+            // perror("epoll_ctl: add");
             break;
         }
     }
@@ -177,7 +191,6 @@ void handle_accept(int listenfd, epoll_event &ev, int epfd)
     if (connfd == -1) {
         if (errno != EAGAIN && errno != ECONNABORTED && errno != EPROTO && errno != EINTR)
         {
-            printf("bad accept\n");
             return;
         }
     }
@@ -188,19 +201,26 @@ int main(int argc, char* argv[])
 {
     int i, sockfd, nfds;
 
-    int port = 0; // 端口
-    if (2 != argc)
+    int port = 843; // 端口
+    if (2 != argc && 1!= argc)
     {
-        fprintf(stderr, "your command is invalid, check if it is:[sandboxsvr port]\n");
-        fprintf(stderr, "for example: sandboxsvr 843\n");
+        LOG_ERR("your command is invalid, check if it is:\n");
+        LOG_ERR("   sandboxsvr [port]\n");
+
+        LOG_ERR("\n");
+
+        LOG_ERR("   for example: sandboxsvr 843\n");
 
         return 1;
     }
     
-    if( (port = atoi(argv[1])) < 0 )
-    {
-        fprintf(stderr,"port<%s> err\n",argv[0]);
-        return 1;
+    if(2 == argc)
+    {// 说明有指定端口
+        if( (port = atoi(argv[1])) <= 0 )
+        {
+            LOG_ERR("<%s> is not a valid port\n",argv[0]);
+            return 1;
+        }
     }
 
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -226,17 +246,17 @@ int main(int argc, char* argv[])
 
     if(bind(listenfd, (sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
     {
-        perror("bind failed");
+        LOG_ERR("bind <listenfd = %d> at %s:%d fail! <error=%d>'%s'\n", listenfd, inet_ntoa(serveraddr.sin_addr), ntohs(serveraddr.sin_port), errno, strerror(errno));
         return 1;
     }
 
     if(listen(listenfd, LISTENQ) < 0)
     {
-        perror("listen failed");
+        LOG_ERR("socketfd = %d listen at %s:%d fail! <error=%d>'%s'\n", listenfd, inet_ntoa(serveraddr.sin_addr), ntohs(serveraddr.sin_port), errno, strerror(errno));
         return 1;
     }
 
-    fprintf(stdout, "start listenning at %s:%d, socket is :%d\n", inet_ntoa(serveraddr.sin_addr), ntohs(serveraddr.sin_port), listenfd);
+    LOG_TRACE("start listenning at %s:%d, socket is :%d\n", inet_ntoa(serveraddr.sin_addr), ntohs(serveraddr.sin_port), listenfd);
 
     while(true)
     {

@@ -556,9 +556,9 @@ void robot_start(robot_t *robot, svr_t *svr)
     ssize_t expected_len = strlen(expected_data) + 1;
     if(strncmp(recv_buf, expected_data, strlen(expected_data)) || n_recv != expected_len)
     {
-        fprintf(stderr, "recv data err, unexpected data:%s, expecting len is %zd, recv len is %zd, robot<idx=%d, fd=%d>\n", 
+        LOG_ERR("recv data err, unexpected data:%s, expecting len is %zd, recv len is %zd, robot<idx=%d, fd=%d>\n", 
             recv_buf, expected_len, n_recv, robot->idx, robot->sockfd);
-        fprintf(stderr, "             expecting data is:%s,\n", expected_data);
+        LOG_ERR("             expecting data is:%s,\n", expected_data);
     }
 
     // LOG_TRACE("robot <%d> life is %d ms\n", i, (int)(end_ms - start_ms));

@@ -4,6 +4,8 @@ killall crossdmd
 killall crossdmd_robot
 
 #bin/sandboxsvr ¼àÌý¶Ë¿Ú
+bin/crossdmd &
+bin/crossdmd &
 bin/crossdmd 10023 &
 bin/crossdmd 10024 &
 bin/crossdmd 10025 &
