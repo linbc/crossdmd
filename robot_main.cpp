@@ -228,6 +228,9 @@ namespace monitoring
         int min_robot_life = MS_PER_MINUTE; // 最快完成任务的机器人花了多少时间
         int max_robot_life = 0;
 
+        time_in_ms latest_conn_success_time = 0; // 最后一个连接成功的机器人什么时候连接完成
+        time_in_ms latest_robot_end_time = 0; // 最后一个执行完成任务的机器人的完成时间点
+
         for(int i = 0; i < n_robot; i++)
         {
             // LOG_TRACE("<robot %d>", i);
@@ -258,6 +261,8 @@ namespace monitoring
                 int conn_time = robot->conn_succ_time - robot->start_conn_time; // 连接耗时
                 total_conn_time += conn_time;
 
+                latest_conn_success_time = max(robot->conn_succ_time, latest_conn_success_time);
+
                 if(robot->finish_time)
                 {
                     ++n_safebox_succ;
@@ -273,6 +278,8 @@ namespace monitoring
 
                     min_robot_life = min(robot_life, min_robot_life);
                     max_robot_life = max(robot_life, max_robot_life);
+
+                    latest_robot_end_time = max(robot->finish_time, latest_robot_end_time);
                 }
 
                 min_conn_time = min(conn_time, min_conn_time);
@@ -286,8 +293,11 @@ namespace monitoring
         double avg_send_recv_ms = ((n_safebox_succ == 0) ? 0 : (double)total_send_recv_time / n_safebox_succ); // 平均数据传输时间
         double avg_robot_life = ((n_safebox_succ == 0) ? 0 : (double)total_succ_robot_life / n_safebox_succ); // 机器人的平均生命长度
 
-        double conn_per_sec = ((n_conn_succ == 0) ? 0 : (double)n_conn_succ / ms_to_s(total_cost_time)); // 每秒多少连接
-        double robots_per_sec = ((n_safebox_succ == 0) ? 0 :(double)n_safebox_succ / ms_to_s(total_cost_time)); // 每秒多少机器人
+        int last_robot_conn_elapsed = latest_conn_success_time - monitor.start_ms;
+        int last_robot_end_elapsed = latest_robot_end_time - monitor.start_ms;
+
+        double conn_per_sec = ((n_conn_succ == 0) ? 0 : (double)n_conn_succ / ms_to_s(last_robot_conn_elapsed)); // 每秒多少连接
+        double robots_per_sec = ((n_safebox_succ == 0) ? 0 :(double)n_safebox_succ / ms_to_s(last_robot_end_elapsed)); // 每秒多少机器人
 
         log::enable_log();
         LOG_TRACE("/----------------------------------------\n");
@@ -517,6 +527,8 @@ void robot_start(robot_t *robot, svr_t *svr)
 
     robot->sockfd = robot_socket;
     robot->conn_succ_time = now();
+
+    // sleep(1);
 
     LOG_TRACE("robot<idx=%d, fd=%d> connect to server<%s:%d>success\n", robot->idx, robot->sockfd, svr->addr, svr->port);
 
