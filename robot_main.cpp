@@ -43,6 +43,26 @@
     (void) (&_x == &_y); \
     _x > _y ? _x : _y; })
 
+namespace log
+{
+    bool log_or_not = true; // 是否打印
+
+    void enable_log()
+    {
+        log_or_not = true;
+    }
+
+    void disable_log()
+    {
+        log_or_not = false;
+    }
+
+#define LOG_TRACE(xxx, args...) if(log_or_not){fprintf(stdout, xxx, ##args);}
+#define LOG_ERR(xxx, args...) if(log_or_not){fprintf(stderr, xxx, ##args);}
+}
+
+using namespace log;
+
 void setnonblocking(int sock)
 {
     int opts = fcntl(sock,F_GETFL);
@@ -69,6 +89,8 @@ struct svr_t
 namespace g_xxx
 {
 #define MAX_SVR_NUM 10
+
+    bool g_log_all = false;
 
     int g_n_robot = 1; // 机器人数量
     
@@ -153,15 +175,16 @@ namespace monitoring
     {
         typedef robot_chart::error_map_t error_map_t;
 
-        fprintf(stdout, "robot succ num = %d\n", chart.n_succ);
-        fprintf(stdout, "robot fail num = %d\n", chart.n_fail);
+        LOG_TRACE("robot succ num = %d\n", chart.n_succ);
+        LOG_TRACE("robot fail num = %d\n", chart.n_fail);
+
 
         for(error_map_t::iterator itr = chart.error_map.begin(); itr != chart.error_map.end(); itr++)
         {
             int err_type = itr->first;
             int err_occur_num = itr->second;
 
-            fprintf(stdout, "num of error<%d, %s> is %d\n", err_type, strerror(err_type), err_occur_num);
+            LOG_TRACE("num of error<%d, %s> is %d\n", err_type, strerror(err_type), err_occur_num);
         }
     }
 
@@ -187,8 +210,6 @@ namespace monitoring
         robot_chart chart;
         chart_init(chart);
 
-        fprintf(stdout, "/----------------------------------------\n");
-
         int total_conn_time = 0;
         int total_send_recv_time = 0;
         int total_succ_robot_life = 0;
@@ -209,22 +230,22 @@ namespace monitoring
 
         for(int i = 0; i < n_robot; i++)
         {
-            // fprintf(stdout, "<robot %d>", i);
+            // LOG_TRACE("<robot %d>", i);
 
             const robot_t *robot = &robots[i];
             if(NULL == robot)
             {
-                fprintf(stdout, "null");
+                LOG_TRACE("null");
                 continue;
             }
 
             chart_sum_up(chart, robot);
 
-            // fprintf(stdout, "robot fd = %d, ", conn->fd);
+            // LOG_TRACE("robot fd = %d, ", conn->fd);
             if(robot->error_no)
             {
                 int err_time_diff = robot->error_occur_time - robot->start_conn_time;
-                fprintf(stdout, "robot[idx=%d,fd=%d] failed after launched <%f> s, errormsg: <%d>%s\n", 
+                LOG_TRACE("robot[idx=%d,fd=%d] failed after launched <%f> s, errormsg: <%d>%s\n", 
                     robot->idx, robot->sockfd, ms_to_s(err_time_diff), robot->error_no, strerror(robot->error_no));
 
                 continue;
@@ -268,39 +289,51 @@ namespace monitoring
         double conn_per_sec = ((n_conn_succ == 0) ? 0 : (double)n_conn_succ / ms_to_s(total_cost_time)); // 每秒多少连接
         double robots_per_sec = ((n_safebox_succ == 0) ? 0 :(double)n_safebox_succ / ms_to_s(total_cost_time)); // 每秒多少机器人
 
-        fprintf(stdout, "total launched robot number = %d\n", n_robot);
+        log::enable_log();
+        LOG_TRACE("/----------------------------------------\n");
+        
+        LOG_TRACE("total launched robot number = %d connect to %d svrs:\n", n_robot, g_xxx::g_n_svr);
+        
+        for(int i = 0; i < g_xxx::g_n_svr; i++)
+        {
+            svr_t *svr = &g_xxx::g_svrs[i];
+            LOG_TRACE("    svrs[%d]:<%s:%d>\n", i + 1, svr->addr, svr->port);
+        }
+
+        LOG_TRACE("\n");
+
         print_robot_chart(chart);
 
-        // fprintf(stdout, "conn succ num = %d\n", n_conn_succ);
-        // fprintf(stdout, "safebox succ num = %d\n", n_safebox_succ);
+        // LOG_TRACE("conn succ num = %d\n", n_conn_succ);
+        // LOG_TRACE("safebox succ num = %d\n", n_safebox_succ);
 
-        fprintf(stdout, "\n");
+        LOG_TRACE("\n");
 
-        fprintf(stdout, "total cost = %f s\n", ms_to_s(total_cost_time));
+        LOG_TRACE("total cost = %f s\n", ms_to_s(total_cost_time));
 
-        fprintf(stdout, "\n");
+        LOG_TRACE("\n");
 
-        fprintf(stdout, "min conn time = %f s\n", ms_to_s(min_conn_time));
-        fprintf(stdout, "max conn time = %f s\n", ms_to_s(max_conn_time));
+        LOG_TRACE("min conn time = %f s\n", ms_to_s(min_conn_time));
+        LOG_TRACE("max conn time = %f s\n", ms_to_s(max_conn_time));
 
-        fprintf(stdout, "min send recv time = %f s\n", ms_to_s(min_send_recv_time));
-        fprintf(stdout, "max send recv time = %f s\n", ms_to_s(max_send_recv_time));
+        LOG_TRACE("min send recv time = %f s\n", ms_to_s(min_send_recv_time));
+        LOG_TRACE("max send recv time = %f s\n", ms_to_s(max_send_recv_time));
 
-        fprintf(stdout, "min robot life = %f s\n", ms_to_s(min_robot_life));
-        fprintf(stdout, "max robot life = %f s\n", ms_to_s(max_robot_life));
+        LOG_TRACE("min robot life = %f s\n", ms_to_s(min_robot_life));
+        LOG_TRACE("max robot life = %f s\n", ms_to_s(max_robot_life));
 
-        fprintf(stdout, "\n");
+        LOG_TRACE("\n");
 
-        fprintf(stdout, "avg conn time = %f s\n", ms_to_s(avg_conn_ms));
-        fprintf(stdout, "avg send_recv time = %f s\n", ms_to_s(avg_send_recv_ms));
-        fprintf(stdout, "avg robot life = %f s\n", ms_to_s(avg_robot_life));
+        LOG_TRACE("avg conn time = %f s\n", ms_to_s(avg_conn_ms));
+        LOG_TRACE("avg send_recv time = %f s\n", ms_to_s(avg_send_recv_ms));
+        LOG_TRACE("avg robot life = %f s\n", ms_to_s(avg_robot_life));
 
-        fprintf(stdout, "\n");
+        LOG_TRACE("\n");
 
-        fprintf(stdout, "conns per second = %f\n", conn_per_sec);
-        fprintf(stdout, "robots per second = %f\n", robots_per_sec);//(double)MS_PER_SECOND / avg_robot_life);
+        LOG_TRACE("conns per second = %f\n", conn_per_sec);
+        LOG_TRACE("robots per second = %f\n", robots_per_sec);//(double)MS_PER_SECOND / avg_robot_life);
 
-        fprintf(stdout, "----------------------------------------/\n");
+        LOG_TRACE("----------------------------------------/\n");
     }
 }
 
@@ -314,12 +347,12 @@ void print_host_ent(hostent *host_ent, const char *host_name)
     char str[32];
 
     /* 将主机的规范名打出来 */  
-    fprintf(stdout, "resolve url<%s> success, the official hostname = <%s>, ", host_name, host_ent->h_name);
+    LOG_TRACE("resolve url<%s> success, the official hostname = <%s>, ", host_name, host_ent->h_name);
 
     /* 主机可能有多个别名，将所有别名分别打出来 */
     for (pptr = host_ent->h_aliases; *pptr != NULL; pptr++)   
     {
-        fprintf(stdout, "alias:%s\n", *pptr);
+        LOG_TRACE("alias:%s\n", *pptr);
     }
 
     /* 根据地址类型，将地址打出来 */ 
@@ -354,7 +387,7 @@ unsigned long name_resolve(const char *host_name)
         struct hostent *host_ent = gethostbyname(host_name);  
         if(host_ent==NULL)
         {
-            fprintf(stderr, "resolve svr addr<%s> fail at gethostbyname!\n", host_name);
+            LOG_ERR("resolve svr addr<%s> fail at gethostbyname!\n", host_name);
             return(-1);
         }
 
@@ -440,7 +473,7 @@ bool robot_recv(robot_t *robot, char buf[], int buf_len, ssize_t &n_recv)
     n_recv = recv(robot->sockfd, buf, buf_len, MSG_WAITALL);  
     if(n_recv == -1)
     {
-        // fprintf(stdout, "robot<idx=%d, fd=%d> recv msg fail! error code is <%d>, error msg is <'%s'>\n", robot->idx, robot->sockfd, errno, strerror(errno));
+        // LOG_TRACE("robot<idx=%d, fd=%d> recv msg fail! error code is <%d>, error msg is <'%s'>\n", robot->idx, robot->sockfd, errno, strerror(errno));
 
         // oops("error: read data from socket...");
         return false;
@@ -478,14 +511,14 @@ void robot_start(robot_t *robot, svr_t *svr)
     {
         robot_err_cache(robot);
 
-        fprintf(stderr, "robot<idx=%d> connect server<%s:%d> fail! <error=%d>'%s'\n", robot->idx, svr->addr, svr->port, errno, strerror(errno));
+        LOG_ERR("robot<idx=%d> connect server<%s:%d> fail! <error=%d>'%s'\n", robot->idx, svr->addr, svr->port, errno, strerror(errno));
         return;
     }
 
     robot->sockfd = robot_socket;
     robot->conn_succ_time = now();
 
-    fprintf(stdout, "robot<idx=%d, fd=%d> connect to server<%s:%d>success\n", robot->idx, robot->sockfd, svr->addr, svr->port);
+    LOG_TRACE("robot<idx=%d, fd=%d> connect to server<%s:%d>success\n", robot->idx, robot->sockfd, svr->addr, svr->port);
 
     static const char buf[] = "<?xml version=\"1.0\"?>*****************";
     int len = strlen(buf) + 1;
@@ -495,7 +528,7 @@ void robot_start(robot_t *robot, svr_t *svr)
     {
         robot_err_cache(robot);
 
-        fprintf(stderr, "robot<idx=%d, fd=%d> send data to server<%s:%d> fail! <error=%d>'%s'\n", robot->idx, robot->sockfd, svr->addr, svr->port, errno, strerror(errno));
+        LOG_ERR("robot<idx=%d, fd=%d> send data to server<%s:%d> fail! <error=%d>'%s'\n", robot->idx, robot->sockfd, svr->addr, svr->port, errno, strerror(errno));
         return;
     }
 
@@ -507,7 +540,7 @@ void robot_start(robot_t *robot, svr_t *svr)
     {
         robot_err_cache(robot);
 
-        fprintf(stdout, "robot<idx=%d, fd=%d> recv msg from svr<%s:%d> fail! <error=%d>'%s'\n", robot->idx, robot->sockfd, svr->addr, svr->port, errno, strerror(errno));
+        LOG_ERR("robot<idx=%d, fd=%d> recv msg from svr<%s:%d> fail! <error=%d>'%s'\n", robot->idx, robot->sockfd, svr->addr, svr->port, errno, strerror(errno));
         return;
     }
 
@@ -528,7 +561,7 @@ void robot_start(robot_t *robot, svr_t *svr)
         fprintf(stderr, "             expecting data is:%s,\n", expected_data);
     }
 
-    // fprintf(stdout, "robot <%d> life is %d ms\n", i, (int)(end_ms - start_ms));
+    // LOG_TRACE("robot <%d> life is %d ms\n", i, (int)(end_ms - start_ms));
 
     robot_end(robot);
 }
@@ -585,47 +618,59 @@ void robots_power_on()
 
 bool parse_arg(int argc, char **argv)
 {
-    if (argc < 4 || (argc % 2))
+    if (argc < 5 || (argc % 2 == 0))
     {
-        // 格式为：robot 连接数量 服务器1地址 服务器1端口 服务器2地址 服务器2端口 .....
-        fprintf(stderr, "your command is invalid, check if it is:<<< robot robot_num server_url1 port1 [server_url2 port2] ...[server_url10 port10] >>>\n");
+        // 格式为：robot 连接数量 是否打印全部日志 服务器1地址 服务器1端口 服务器2地址 服务器2端口 .....
+        LOG_ERR("your command is invalid, check if it is:\n");
+        LOG_ERR("   <<< robot robot_num log_all_or_not server_url1 port1 [server_url2 port2] ...[server_url10 port10] >>>\n");
 
-        fprintf(stderr, "for example: robot 10000 s0.9.game2.com.cn 843 s0.9.game2.com.cn 844\n");
-        fprintf(stderr, "for example: robot 999 127.0.0.1 10023 127.0.0.1 10024\n");
+        LOG_ERR("\n");
+
+        LOG_ERR("   for example: robot 10000 1 s0.9.game2.com.cn 843 s0.9.game2.com.cn 844\n");
+        LOG_ERR("   for example: robot 999 0 127.0.0.1 10023 127.0.0.1 10024\n");
 
         return false;
     }
 
     if( (g_n_robot = atoi(argv[1])) < 0 )
     {
-        fprintf(stderr, "robot number:<%s> is invalid\a\n",argv[3]);
+        LOG_ERR("robot number:<%s> is invalid\a\n",argv[3]);
         return false;
     }
 
+    int log_all_arg = atoi(argv[2]);
+    if(log_all_arg !=0 && log_all_arg != 1)
+    {
+        LOG_ERR("option log_all_or_not:<%s> is invalid, must be 0 or 1\n", argv[2]);
+        return false;
+    }
+
+    g_xxx::g_log_all = (log_all_arg ? true : false);
+
     g_n_svr = 0;
 
-    int svr_num_by_argc = (argc - 1) / 2;
+    int svr_num_by_argc = (argc - 2) / 2;
     g_svrs = new svr_t[svr_num_by_argc];
 
     char *svr_addr = NULL;
     int port = 0;
     unsigned long cast_addr = 0;
 
-    for(int i = 2; i < argc; i+=2)
+    for(int i = 3; i < argc; i+=2)
     {
         svr_addr = argv[i];
 
         cast_addr = name_resolve(svr_addr);
         if((unsigned long)-1 == cast_addr)
         {
-            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid address\n", i, svr_addr);
+            LOG_ERR("parse %dth argument fail: <%s> is not a valid address\n", i, svr_addr);
             return false;
         }
 
         port = atoi(argv[i + 1]);
         if(port <= 0 )
         {
-            fprintf(stderr, "parse %dth argument fail: <%s> is not a valid port\n", i, argv[i + 1]);
+            LOG_ERR("parse %dth argument fail: <%s> is not a valid port\n", i, argv[i + 1]);
             return false;
         }
 
@@ -637,11 +682,11 @@ bool parse_arg(int argc, char **argv)
 
     if(g_n_svr == 0)
     {
-        fprintf(stderr, "error: can't find a valid server");
+        LOG_ERR("error: can't find a valid server");
         return false;
     }
 
-    // fprintf(stdout, "\n");
+    // LOG_TRACE("\n");
 
     return true;
 }
@@ -649,14 +694,22 @@ bool parse_arg(int argc, char **argv)
 // 机器人
 int main(int argc, char **argv)
 {
+    log::enable_log();
+
     if(false == parse_arg(argc, argv))
     {
         return 1;
     }
 
-    fprintf(stdout, "plan to launch <%d> robot\n", g_n_robot);
+    LOG_TRACE("start to launch <%d> robot\n", g_n_robot);
+
+    if(false == g_xxx::g_log_all)
+    {
+        log::disable_log();
+    }
+
     robots_power_on();
-	fprintf(stdout, "mission accomplished, the robot num is %d\n", g_n_robot);
+	// LOG_TRACE("mission accomplished, the robot num is %d\n", g_n_robot);
 
 	return 0;
 }
